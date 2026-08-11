@@ -5,8 +5,11 @@ dependencies:
   - python=3.13
   - pip
   - pip:
+      - chromadb==1.5.9
       - fastapi==0.141.1
       - httpx==0.28.1
+      - packaging==25.0
       - pypdf==6.15.0
       - python-multipart==0.0.32
+      - sentence-transformers==5.7.0
       - uvicorn==0.52.1

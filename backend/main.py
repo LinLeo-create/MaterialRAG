@@ -1,11 +1,20 @@
 import os
+from functools import lru_cache
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
 from .pdf_parser import InvalidPdfError, parse_pdf
-from .schemas import ParseResponse
+from .schemas import (
+    DeleteResponse,
+    DocumentResult,
+    IndexResponse,
+    ParseResponse,
+    SearchRequest,
+    SearchResponse,
+)
+from .vector_index import VectorIndex, document_id_for
 
 MAX_FILE_SIZE = 20 * 1024 * 1024
 MAX_FILES = 10
@@ -15,7 +24,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["DELETE", "GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
@@ -25,8 +34,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/documents/parse", response_model=ParseResponse)
-async def parse_documents(files: list[UploadFile] = File(...)) -> ParseResponse:
+@lru_cache
+def get_vector_index() -> VectorIndex:
+    return VectorIndex()
+
+
+async def read_and_parse_documents(
+    files: list[UploadFile],
+) -> list[tuple[bytes, DocumentResult]]:
     if not files:
         raise HTTPException(status_code=400, detail="請至少上傳一份 PDF。")
     if len(files) > MAX_FILES:
@@ -56,6 +71,58 @@ async def parse_documents(files: list[UploadFile] = File(...)) -> ParseResponse:
             document = await run_in_threadpool(parse_pdf, filename, content)
         except InvalidPdfError as exc:
             raise HTTPException(status_code=422, detail=f"{filename}：{exc}") from exc
-        documents.append(document)
+        documents.append((content, document))
 
-    return ParseResponse(documents=documents)
+    return documents
+
+
+@app.post("/api/documents/parse", response_model=ParseResponse)
+async def parse_documents(files: list[UploadFile] = File(...)) -> ParseResponse:
+    parsed = await read_and_parse_documents(files)
+    return ParseResponse(documents=[document for _, document in parsed])
+
+
+@app.post("/api/documents/index", response_model=IndexResponse)
+async def index_documents(
+    files: list[UploadFile] = File(...),
+    index: VectorIndex = Depends(get_vector_index),
+) -> IndexResponse:
+    parsed = await read_and_parse_documents(files)
+    indexed = []
+    for content, document in parsed:
+        if not document.chunks:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{document.filename} 沒有可建立索引的文字。",
+            )
+        indexed.append(
+            await run_in_threadpool(
+                index.index_document,
+                document_id_for(content),
+                document,
+            )
+        )
+    return IndexResponse(documents=indexed)
+
+
+@app.post("/api/retrieval/search", response_model=SearchResponse)
+async def search_documents(
+    request: SearchRequest,
+    index: VectorIndex = Depends(get_vector_index),
+) -> SearchResponse:
+    results = await run_in_threadpool(
+        index.search,
+        request.query.strip(),
+        request.top_k,
+        request.document_ids,
+    )
+    return SearchResponse(results=results)
+
+
+@app.delete("/api/documents/{document_id}", response_model=DeleteResponse)
+async def delete_document(
+    document_id: str,
+    index: VectorIndex = Depends(get_vector_index),
+) -> DeleteResponse:
+    deleted = await run_in_threadpool(index.delete_document, document_id)
+    return DeleteResponse(document_id=document_id, deleted_chunks=deleted)

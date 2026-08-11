@@ -2,11 +2,11 @@ import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft, ArrowRight, Check, Download, FileText, FlaskConical,
-  GripVertical, Plus, Sparkles, Trash2, Upload, X
+  GripVertical, Plus, Search, Sparkles, Trash2, Upload, X
 } from "lucide-react";
 import "./styles.css";
 import { downloadCsv } from "./csv.js";
-import { parseDocuments } from "./api.js";
+import { indexDocuments, searchDocuments } from "./api.js";
 
 const initialFields = ["材料名稱", "製程方法", "退火溫度", "能隙"];
 
@@ -92,7 +92,7 @@ function UploadStep({ files, setFiles, back, onParse }) {
     setIsParsing(true);
     setError("");
     try {
-      onParse(await parseDocuments(files));
+      onParse(await indexDocuments(files));
     } catch (parseError) {
       setError(parseError.message);
     } finally {
@@ -104,7 +104,7 @@ function UploadStep({ files, setFiles, back, onParse }) {
       <div className="intro">
         <span>步驟 2</span>
         <h1>上傳研究文獻</h1>
-        <p>加入要整理成 Benchmark 的 PDF 文件。</p>
+        <p>加入要整理成 Benchmark 的 PDF 文件，系統會解析並建立本機索引。</p>
       </div>
       <input ref={inputRef} hidden type="file" accept=".pdf" multiple onChange={addFiles}/>
       <button className="dropzone" onClick={() => inputRef.current?.click()}>
@@ -127,8 +127,49 @@ function UploadStep({ files, setFiles, back, onParse }) {
       {error && <div className="error-message" role="alert">{error}</div>}
       <div className="actions split">
         <button className="back" disabled={isParsing} onClick={back}><ArrowLeft size={16}/>上一步</button>
-        <button className="primary" disabled={!files.length || isParsing} onClick={parse}>{isParsing ? "正在解析 PDF…" : "開始解析"}<Sparkles size={15}/></button>
+        <button className="primary" disabled={!files.length || isParsing} onClick={parse}>{isParsing ? "正在建立索引…" : "解析並建立索引"}<Sparkles size={15}/></button>
       </div>
+    </section>
+  );
+}
+
+function RetrievalPanel({ documents }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState("");
+  const search = async () => {
+    const value = query.trim();
+    if (!value) return;
+    setIsSearching(true);
+    setHasSearched(true);
+    setError("");
+    try {
+      setResults(await searchDocuments(value, 5, documents.map(document => document.document_id)));
+    } catch (searchError) {
+      setError(searchError.message);
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+  return (
+    <section className="retrieval-panel">
+      <div className="retrieval-heading"><div><b>檢索驗證</b><span>先確認正確證據能否被找到，再進行欄位擷取。</span></div></div>
+      <div className="search-box">
+        <Search size={16}/>
+        <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => event.key === "Enter" && search()} placeholder="例如：ZnO 的退火溫度是多少？"/>
+        <button disabled={!query.trim() || isSearching} onClick={search}>{isSearching ? "搜尋中…" : "搜尋 Top 5"}</button>
+      </div>
+      {error && <div className="error-message" role="alert">{error}</div>}
+      {results.length > 0 && <div className="retrieval-results">{results.map((result, index) => (
+        <article key={`${result.document_id}-${result.chunk_index}`}>
+          <div><b>#{index + 1} · {result.filename}</b><span>第 {result.page_number} 頁 · Chunk {result.chunk_index + 1} · 相似度 {(result.score * 100).toFixed(1)}%</span></div>
+          <p>{result.text}</p>
+        </article>
+      ))}</div>}
+      {!isSearching && hasSearched && results.length === 0 && !error && <p className="no-results">索引中沒有相符內容。</p>}
     </section>
   );
 }
@@ -171,6 +212,7 @@ function TableStep({ fields, documents, back }) {
           </div>
         ))}
       </div>
+      <RetrievalPanel documents={documents}/>
       <div className="table-card">
         <table>
           <thead><tr><th>#</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
