@@ -65,3 +65,35 @@ class SearchResponse(BaseModel):
 class DeleteResponse(BaseModel):
     document_id: str
     deleted_chunks: int = Field(ge=0)
+
+
+class ExtractionRequest(BaseModel):
+    document_ids: list[str] = Field(min_length=1, max_length=10)
+    fields: list[str] = Field(min_length=1, max_length=20)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+class Citation(BaseModel):
+    filename: str
+    page_number: int = Field(ge=1)
+    chunk_index: int = Field(ge=0)
+    text: str
+    score: float = Field(ge=0, le=1)
+
+
+class ExtractedField(BaseModel):
+    field: str
+    value: str | None
+    unit: str | None
+    confidence: str
+    citations: list[Citation]
+
+
+class DocumentExtraction(BaseModel):
+    document_id: str
+    filename: str
+    fields: list[ExtractedField]
+
+
+class ExtractionResponse(BaseModel):
+    documents: list[DocumentExtraction]

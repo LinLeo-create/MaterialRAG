@@ -45,7 +45,7 @@ conda activate materialrag
 
 ```bat
 conda activate materialrag
-python -m uvicorn backend.main:app --reload --port 8000
+python -m uvicorn backend.main:app --reload --port 8000 --env-file .env.local
 ```
 
 再開啟第二個 CMD 視窗啟動前端：
@@ -59,6 +59,15 @@ npm.cmd run dev
 第一次按下「解析並建立索引」時，Sentence Transformers 會下載 `BAAI/bge-m3` 模型；所需時間與空間取決於模型快取狀態。之後模型會直接由本機快取載入。ChromaDB 索引預設保存在 `data/chroma`，此資料夾不會提交至 Git。
 
 建立索引後，可在結果頁的「檢索驗證」輸入問題並查看 Top-5 內容、相似度、來源文件與頁碼。目前此功能只驗證證據檢索，尚未呼叫 LLM 生成答案。
+
+若要使用「自動擷取欄位」，請在 `.env.local` 設定 OpenAI Platform API 金鑰：
+
+```text
+OPENAI_API_KEY=你的 API 金鑰
+OPENAI_EXTRACTION_MODEL=gpt-5.6-luna
+```
+
+API 金鑰屬於後端設定，請勿加上 `VITE_` 前綴。欄位擷取會針對每份文件逐欄檢索證據，再要求模型回傳結構化結果；沒有有效來源引用的值會被捨棄。此功能使用 OpenAI API 額度，與 ChatGPT 登入或訂閱分開。
 
 ## 品質檢查
 
@@ -88,5 +97,7 @@ backend/           PDF 解析 API 與後端測試
 | `FRONTEND_ORIGIN` | 允許呼叫後端的前端來源 | `http://localhost:5173` |
 | `MATERIALRAG_INDEX_PATH` | ChromaDB 持久化路徑 | `data/chroma` |
 | `MATERIALRAG_EMBEDDING_MODEL` | Sentence Transformers 模型 | `BAAI/bge-m3` |
+| `OPENAI_API_KEY` | 後端呼叫 OpenAI API 的金鑰 | 無 |
+| `OPENAI_EXTRACTION_MODEL` | 結構化欄位擷取模型 | `gpt-5.6-luna` |
 
 請勿將 API 金鑰放在 `VITE_` 開頭的變數中；這類變數會被打包到瀏覽器端。模型金鑰將由後端環境管理。

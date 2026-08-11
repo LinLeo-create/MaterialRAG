@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { downloadCsv } from "./csv.js";
-import { indexDocuments, searchDocuments } from "./api.js";
+import { extractFields, indexDocuments, searchDocuments } from "./api.js";
 
 const initialFields = ["材料名稱", "製程方法", "退火溫度", "能隙"];
 
@@ -178,17 +178,43 @@ function TableStep({ fields, documents, back }) {
   const [rows, setRows] = useState(() => {
     return documents.map(() => fields.map(() => "—"));
   });
+  const [extractions, setExtractions] = useState([]);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState("");
   const updateCell = (ri, ci, value) => setRows(rows.map((row, r) => r === ri ? row.map((cell, c) => c === ci ? value : cell) : row));
   const addRow = () => setRows([...rows, fields.map(() => "—")]);
   const exportCsv = () => {
     downloadCsv([fields, ...rows]);
   };
+  const runExtraction = async () => {
+    setIsExtracting(true);
+    setExtractionError("");
+    try {
+      const extractedDocuments = await extractFields(documents.map(document => document.document_id), fields);
+      setExtractions(extractedDocuments);
+      setRows(documents.map(document => {
+        const extracted = extractedDocuments.find(item => item.document_id === document.document_id);
+        return fields.map(field => {
+          const result = extracted?.fields.find(item => item.field === field);
+          return result?.value ? `${result.value}${result.unit ? ` ${result.unit}` : ""}` : "—";
+        });
+      }));
+    } catch (extractError) {
+      setExtractionError(extractError.message);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
   return (
     <section className="table-page">
       <div className="table-heading">
         <div><span>步驟 3</span><h1>PDF 解析結果</h1><p>{documents.length} 份文獻 · {fields.length} 個待擷取欄位</p></div>
-        <button className="export" onClick={exportCsv}><Download size={15}/>匯出 CSV</button>
+        <div className="heading-actions">
+          <button className="extract" disabled={isExtracting} onClick={runExtraction}><Sparkles size={15}/>{isExtracting ? "正在擷取…" : "自動擷取欄位"}</button>
+          <button className="export" onClick={exportCsv}><Download size={15}/>匯出 CSV</button>
+        </div>
       </div>
+      {extractionError && <div className="error-message table-error" role="alert">{extractionError}</div>}
       <div className="document-summary">
         {documents.map(document => (
           <div key={document.filename} className="document-summary-item">
@@ -215,15 +241,29 @@ function TableStep({ fields, documents, back }) {
       <RetrievalPanel documents={documents}/>
       <div className="table-card">
         <table>
-          <thead><tr><th>#</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
+          <thead><tr><th>#</th><th>文獻</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
           <tbody>{rows.map((row, ri) => (
-            <tr key={ri}><td>{ri + 1}</td>{row.map((cell, ci) =>
+            <tr key={ri}><td>{ri + 1}</td><td className="filename-cell">{documents[ri]?.filename || "—"}</td>{row.map((cell, ci) =>
               <td key={ci}><input value={cell} onChange={e => updateCell(ri, ci, e.target.value)}/></td>
             )}</tr>
           ))}</tbody>
         </table>
         <button className="add-row" onClick={addRow}><Plus size={15}/>新增一列</button>
       </div>
+      {extractions.length > 0 && <section className="citation-panel">
+        <h2>擷取證據</h2>
+        {extractions.map(document => (
+          <details key={document.document_id}>
+            <summary>{document.filename}</summary>
+            {document.fields.map(field => (
+              <div className="citation-field" key={field.field}>
+                <b>{field.field}</b><span>{field.value ? `${field.value}${field.unit ? ` ${field.unit}` : ""}` : "未找到"} · {field.confidence}</span>
+                {field.citations.map(citation => <blockquote key={`${citation.page_number}-${citation.chunk_index}`}><small>第 {citation.page_number} 頁 · 相似度 {(citation.score * 100).toFixed(1)}%</small>{citation.text}</blockquote>)}
+              </div>
+            ))}
+          </details>
+        ))}
+      </section>}
       <div className="actions split table-actions">
         <button className="back" onClick={back}><ArrowLeft size={16}/>返回文獻</button>
         <span><Check size={14}/>表格內容可直接點擊修改</span>

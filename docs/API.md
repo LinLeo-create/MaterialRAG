@@ -115,3 +115,48 @@
   "deleted_chunks": 12
 }
 ```
+
+## 執行結構化欄位擷取
+
+`POST /api/extraction/run`
+
+```json
+{
+  "document_ids": ["a SHA-256 digest"],
+  "fields": ["材料名稱", "退火溫度", "能隙"],
+  "top_k": 5
+}
+```
+
+每個欄位會先在指定文件內檢索證據，再交由 LLM 產生結構化結果。回傳的 evidence ID 必須存在於檢索結果，否則該值會被改為 `null`。
+
+```json
+{
+  "documents": [
+    {
+      "document_id": "a SHA-256 digest",
+      "filename": "paper.pdf",
+      "fields": [
+        {
+          "field": "退火溫度",
+          "value": "500",
+          "unit": "°C",
+          "confidence": "high",
+          "citations": [
+            {
+              "filename": "paper.pdf",
+              "page_number": 4,
+              "chunk_index": 8,
+              "text": "The films were annealed at 500 °C...",
+              "score": 0.87
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `502`：模型服務或結構化輸出失敗。
+- `503`：尚未設定 `OPENAI_API_KEY`。

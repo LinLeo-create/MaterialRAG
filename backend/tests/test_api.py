@@ -4,7 +4,8 @@ import unittest
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
-from backend.main import app, get_vector_index
+from backend.extraction import ExtractionDraft, ExtractedFieldDraft
+from backend.main import app, get_extraction_provider, get_vector_index
 from backend.schemas import SearchResult
 
 
@@ -77,6 +78,48 @@ class ApiTestCase(unittest.TestCase):
     def test_search_rejects_empty_query(self):
         response = self.client.post("/api/retrieval/search", json={"query": ""})
         self.assertEqual(response.status_code, 422)
+
+    def test_extraction_endpoint_returns_verified_structure(self):
+        class FakeIndex:
+            def search(self, query, top_k, document_ids):
+                return [
+                    SearchResult(
+                        document_id="doc-a",
+                        filename="paper.pdf",
+                        page_number=2,
+                        chunk_index=1,
+                        text="The bandgap is 3.2 eV.",
+                        score=0.9,
+                    )
+                ]
+
+        class FakeProvider:
+            def extract(self, fields, evidence):
+                return ExtractionDraft(
+                    fields=[
+                        ExtractedFieldDraft(
+                            field="能隙",
+                            value="3.2",
+                            unit="eV",
+                            confidence="high",
+                            evidence_ids=[evidence[0].evidence_id],
+                        )
+                    ]
+                )
+
+        app.dependency_overrides[get_vector_index] = FakeIndex
+        app.dependency_overrides[get_extraction_provider] = FakeProvider
+        try:
+            response = self.client.post(
+                "/api/extraction/run",
+                json={"document_ids": ["doc-a"], "fields": ["能隙"], "top_k": 3},
+            )
+        finally:
+            app.dependency_overrides.clear()
+        self.assertEqual(response.status_code, 200)
+        field = response.json()["documents"][0]["fields"][0]
+        self.assertEqual(field["value"], "3.2")
+        self.assertEqual(field["citations"][0]["page_number"], 2)
 
 
 if __name__ == "__main__":

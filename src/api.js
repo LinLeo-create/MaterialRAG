@@ -38,3 +38,21 @@ export async function searchDocuments(query, topK = 5, documentIds = null) {
   }
   return payload.results;
 }
+
+export async function extractFields(documentIds, fields, topK = 5) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/extraction/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document_ids: documentIds, fields, top_k: topK }),
+    });
+  } catch {
+    throw new Error("無法連線到欄位擷取服務，請確認後端已啟動。");
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || "欄位擷取失敗，請稍後再試。");
+  }
+  return payload.documents;
+}

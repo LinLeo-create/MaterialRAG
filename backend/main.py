@@ -5,10 +5,17 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
+from .extraction import (
+    ExtractionConfigurationError,
+    ExtractionService,
+    OpenAIExtractionProvider,
+)
 from .pdf_parser import InvalidPdfError, parse_pdf
 from .schemas import (
     DeleteResponse,
     DocumentResult,
+    ExtractionRequest,
+    ExtractionResponse,
     IndexResponse,
     ParseResponse,
     SearchRequest,
@@ -37,6 +44,11 @@ def health() -> dict[str, str]:
 @lru_cache
 def get_vector_index() -> VectorIndex:
     return VectorIndex()
+
+
+@lru_cache
+def get_extraction_provider() -> OpenAIExtractionProvider:
+    return OpenAIExtractionProvider()
 
 
 async def read_and_parse_documents(
@@ -126,3 +138,30 @@ async def delete_document(
 ) -> DeleteResponse:
     deleted = await run_in_threadpool(index.delete_document, document_id)
     return DeleteResponse(document_id=document_id, deleted_chunks=deleted)
+
+
+@app.post("/api/extraction/run", response_model=ExtractionResponse)
+async def extract_fields(
+    request: ExtractionRequest,
+    index: VectorIndex = Depends(get_vector_index),
+    provider: OpenAIExtractionProvider = Depends(get_extraction_provider),
+) -> ExtractionResponse:
+    fields = list(dict.fromkeys(field.strip() for field in request.fields if field.strip()))
+    if not fields:
+        raise HTTPException(status_code=422, detail="請至少提供一個非空白欄位。")
+    service = ExtractionService(index, provider)
+    try:
+        documents = [
+            await run_in_threadpool(
+                service.extract_document,
+                document_id,
+                fields,
+                request.top_k,
+            )
+            for document_id in request.document_ids
+        ]
+    except ExtractionConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM 擷取失敗：{exc}") from exc
+    return ExtractionResponse(documents=documents)
