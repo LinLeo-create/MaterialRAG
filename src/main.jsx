@@ -5,14 +5,10 @@ import {
   GripVertical, Plus, Sparkles, Trash2, Upload, X
 } from "lucide-react";
 import "./styles.css";
+import { downloadCsv } from "./csv.js";
+import { parseDocuments } from "./api.js";
 
 const initialFields = ["材料名稱", "製程方法", "退火溫度", "能隙"];
-
-const sampleValues = [
-  ["ZnO", "Sol-gel", "500 °C", "3.20 eV"],
-  ["TiO₂", "Sputtering", "450 °C", "3.05 eV"],
-  ["SrTiO₃", "Solid-state", "700 °C", "3.25 eV"],
-];
 
 function Header() {
   return (
@@ -83,11 +79,25 @@ function FieldStep({ fields, setFields, next }) {
   );
 }
 
-function UploadStep({ files, setFiles, back, next }) {
+function UploadStep({ files, setFiles, back, onParse }) {
   const inputRef = useRef();
+  const [isParsing, setIsParsing] = useState(false);
+  const [error, setError] = useState("");
   const addFiles = e => {
     const selected = [...e.target.files].filter(file => !files.some(f => f.name === file.name));
     setFiles([...files, ...selected]);
+    setError("");
+  };
+  const parse = async () => {
+    setIsParsing(true);
+    setError("");
+    try {
+      onParse(await parseDocuments(files));
+    } catch (parseError) {
+      setError(parseError.message);
+    } finally {
+      setIsParsing(false);
+    }
   };
   return (
     <section className="card upload-step">
@@ -114,33 +124,38 @@ function UploadStep({ files, setFiles, back, next }) {
           ))}
         </div>
       )}
+      {error && <div className="error-message" role="alert">{error}</div>}
       <div className="actions split">
-        <button className="back" onClick={back}><ArrowLeft size={16}/>上一步</button>
-        <button className="primary" disabled={!files.length} onClick={next}>開始整理< Sparkles size={15}/></button>
+        <button className="back" disabled={isParsing} onClick={back}><ArrowLeft size={16}/>上一步</button>
+        <button className="primary" disabled={!files.length || isParsing} onClick={parse}>{isParsing ? "正在解析 PDF…" : "開始解析"}<Sparkles size={15}/></button>
       </div>
     </section>
   );
 }
 
-function TableStep({ fields, files, back }) {
+function TableStep({ fields, documents, back }) {
   const [rows, setRows] = useState(() => {
-    const count = Math.max(files.length, 3);
-    return Array.from({length: count}, (_, rowIndex) =>
-      fields.map((_, columnIndex) => sampleValues[rowIndex]?.[columnIndex] || "—")
-    );
+    return documents.map(() => fields.map(() => "—"));
   });
   const updateCell = (ri, ci, value) => setRows(rows.map((row, r) => r === ri ? row.map((cell, c) => c === ci ? value : cell) : row));
   const addRow = () => setRows([...rows, fields.map(() => "—")]);
   const exportCsv = () => {
-    const csv = [fields, ...rows].map(row => row.map(cell => `"${String(cell).replaceAll('"','""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], {type:"text/csv;charset=utf-8"}));
-    const link = document.createElement("a"); link.href = url; link.download = "material-benchmark.csv"; link.click(); URL.revokeObjectURL(url);
+    downloadCsv([fields, ...rows]);
   };
   return (
     <section className="table-page">
       <div className="table-heading">
-        <div><span>步驟 3</span><h1>整理 Benchmark 表格</h1><p>{files.length} 份文獻 · {fields.length} 個比較項目</p></div>
+        <div><span>步驟 3</span><h1>PDF 解析結果</h1><p>{documents.length} 份文獻 · {fields.length} 個待擷取欄位</p></div>
         <button className="export" onClick={exportCsv}><Download size={15}/>匯出 CSV</button>
+      </div>
+      <div className="document-summary">
+        {documents.map(document => (
+          <div key={document.filename} className="document-summary-row">
+            <FileText size={16}/>
+            <div><b>{document.filename}</b><span>{document.page_count} 頁 · {document.character_count.toLocaleString()} 個字元</span></div>
+            <span className={document.has_extractable_text ? "text-ready" : "text-missing"}>{document.has_extractable_text ? "文字已擷取" : "未偵測到文字，可能需要 OCR"}</span>
+          </div>
+        ))}
       </div>
       <div className="table-card">
         <table>
@@ -165,14 +180,19 @@ function App() {
   const [step, setStep] = useState(1);
   const [fields, setFields] = useState(initialFields);
   const [files, setFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const finishParsing = parsedDocuments => {
+    setDocuments(parsedDocuments);
+    setStep(3);
+  };
   return (
     <div className="app">
       <Header/>
       <main>
         <Stepper step={step}/>
         {step === 1 && <FieldStep fields={fields} setFields={setFields} next={() => setStep(2)}/>}
-        {step === 2 && <UploadStep files={files} setFiles={setFiles} back={() => setStep(1)} next={() => setStep(3)}/>}
-        {step === 3 && <TableStep fields={fields} files={files} back={() => setStep(2)}/>}
+        {step === 2 && <UploadStep files={files} setFiles={setFiles} back={() => setStep(1)} onParse={finishParsing}/>}
+        {step === 3 && <TableStep fields={fields} documents={documents} back={() => setStep(2)}/>}
       </main>
     </div>
   );

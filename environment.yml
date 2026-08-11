@@ -1,0 +1,12 @@
+name: materialrag
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - fastapi==0.141.1
+      - httpx==0.28.1
+      - pypdf==6.15.0
+      - python-multipart==0.0.32
+      - uvicorn==0.52.1
