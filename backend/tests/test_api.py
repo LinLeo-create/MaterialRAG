@@ -33,6 +33,8 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(document["filename"], "paper.pdf")
         self.assertEqual(document["page_count"], 1)
         self.assertFalse(document["has_extractable_text"])
+        self.assertEqual(document["chunk_count"], 0)
+        self.assertEqual(document["chunks"], [])
         self.assertEqual(document["pages"][0]["page_number"], 1)
 
     def test_rejects_non_pdf_content(self):

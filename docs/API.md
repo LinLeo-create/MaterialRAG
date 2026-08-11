@@ -24,10 +24,19 @@
       "page_count": 2,
       "character_count": 1200,
       "has_extractable_text": true,
+      "chunk_count": 2,
       "pages": [
         {
           "page_number": 1,
           "text": "Extracted page text...",
+          "character_count": 620
+        }
+      ],
+      "chunks": [
+        {
+          "chunk_index": 0,
+          "page_number": 1,
+          "text": "Extracted page text prepared for retrieval...",
           "character_count": 620
         }
       ]
@@ -35,6 +44,8 @@
   ]
 }
 ```
+
+每個 chunk 預設最多 1,000 字元、重疊 150 字元，並且不會跨越 PDF 頁面，以確保後續檢索結果可回溯到單一來源頁。
 
 錯誤狀態：
 

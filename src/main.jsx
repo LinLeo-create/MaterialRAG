@@ -150,10 +150,24 @@ function TableStep({ fields, documents, back }) {
       </div>
       <div className="document-summary">
         {documents.map(document => (
-          <div key={document.filename} className="document-summary-row">
-            <FileText size={16}/>
-            <div><b>{document.filename}</b><span>{document.page_count} 頁 · {document.character_count.toLocaleString()} 個字元</span></div>
-            <span className={document.has_extractable_text ? "text-ready" : "text-missing"}>{document.has_extractable_text ? "文字已擷取" : "未偵測到文字，可能需要 OCR"}</span>
+          <div key={document.filename} className="document-summary-item">
+            <div className="document-summary-row">
+              <FileText size={16}/>
+              <div><b>{document.filename}</b><span>{document.page_count} 頁 · {document.character_count.toLocaleString()} 個字元 · {document.chunk_count} 個 chunks</span></div>
+              <span className={document.has_extractable_text ? "text-ready" : "text-missing"}>{document.has_extractable_text ? "文字已擷取" : "未偵測到文字，可能需要 OCR"}</span>
+            </div>
+            {document.chunks.length > 0 && (
+              <details className="chunk-preview">
+                <summary>檢視切分預覽</summary>
+                {document.chunks.slice(0, 3).map(chunk => (
+                  <div className="chunk-card" key={chunk.chunk_index}>
+                    <span>Chunk {chunk.chunk_index + 1} · 第 {chunk.page_number} 頁 · {chunk.character_count} 字元</span>
+                    <p>{chunk.text}</p>
+                  </div>
+                ))}
+                {document.chunk_count > 3 && <small>目前顯示前 3 個，共 {document.chunk_count} 個 chunks。</small>}
+              </details>
+            )}
           </div>
         ))}
       </div>

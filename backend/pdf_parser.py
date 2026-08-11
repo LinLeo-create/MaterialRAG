@@ -3,6 +3,7 @@ from io import BytesIO
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from .chunker import chunk_pages
 from .schemas import DocumentResult, PageResult
 
 
@@ -38,10 +39,13 @@ def parse_pdf(filename: str, content: bytes) -> DocumentResult:
         raise InvalidPdfError("PDF 已損壞或格式不受支援。") from exc
 
     character_count = sum(page.character_count for page in pages)
+    chunks = chunk_pages(pages)
     return DocumentResult(
         filename=filename,
         page_count=len(pages),
         character_count=character_count,
         has_extractable_text=character_count > 0,
         pages=pages,
+        chunk_count=len(chunks),
+        chunks=chunks,
     )
