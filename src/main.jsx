@@ -1,18 +1,14 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft, ArrowRight, Check, Download, FileText, FlaskConical,
-  GripVertical, Plus, Sparkles, Trash2, Upload, X
+  GripVertical, Plus, Search, Sparkles, Trash2, Upload, X
 } from "lucide-react";
 import "./styles.css";
+import { downloadCsv } from "./csv.js";
+import { extractFields, getExtractionStatus, indexDocuments, searchDocuments } from "./api.js";
 
 const initialFields = ["材料名稱", "製程方法", "退火溫度", "能隙"];
-
-const sampleValues = [
-  ["ZnO", "Sol-gel", "500 °C", "3.20 eV"],
-  ["TiO₂", "Sputtering", "450 °C", "3.05 eV"],
-  ["SrTiO₃", "Solid-state", "700 °C", "3.25 eV"],
-];
 
 function Header() {
   return (
@@ -83,18 +79,32 @@ function FieldStep({ fields, setFields, next }) {
   );
 }
 
-function UploadStep({ files, setFiles, back, next }) {
+function UploadStep({ files, setFiles, back, onParse }) {
   const inputRef = useRef();
+  const [isParsing, setIsParsing] = useState(false);
+  const [error, setError] = useState("");
   const addFiles = e => {
     const selected = [...e.target.files].filter(file => !files.some(f => f.name === file.name));
     setFiles([...files, ...selected]);
+    setError("");
+  };
+  const parse = async () => {
+    setIsParsing(true);
+    setError("");
+    try {
+      onParse(await indexDocuments(files));
+    } catch (parseError) {
+      setError(parseError.message);
+    } finally {
+      setIsParsing(false);
+    }
   };
   return (
     <section className="card upload-step">
       <div className="intro">
         <span>步驟 2</span>
         <h1>上傳研究文獻</h1>
-        <p>加入要整理成 Benchmark 的 PDF 文件。</p>
+        <p>加入要整理成 Benchmark 的 PDF 文件，系統會解析並建立本機索引。</p>
       </div>
       <input ref={inputRef} hidden type="file" accept=".pdf" multiple onChange={addFiles}/>
       <button className="dropzone" onClick={() => inputRef.current?.click()}>
@@ -114,45 +124,153 @@ function UploadStep({ files, setFiles, back, next }) {
           ))}
         </div>
       )}
+      {error && <div className="error-message" role="alert">{error}</div>}
       <div className="actions split">
-        <button className="back" onClick={back}><ArrowLeft size={16}/>上一步</button>
-        <button className="primary" disabled={!files.length} onClick={next}>開始整理< Sparkles size={15}/></button>
+        <button className="back" disabled={isParsing} onClick={back}><ArrowLeft size={16}/>上一步</button>
+        <button className="primary" disabled={!files.length || isParsing} onClick={parse}>{isParsing ? "正在建立索引…" : "解析並建立索引"}<Sparkles size={15}/></button>
       </div>
     </section>
   );
 }
 
-function TableStep({ fields, files, back }) {
+function RetrievalPanel({ documents }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState("");
+  const search = async () => {
+    const value = query.trim();
+    if (!value) return;
+    setIsSearching(true);
+    setHasSearched(true);
+    setError("");
+    try {
+      setResults(await searchDocuments(value, 5, documents.map(document => document.document_id)));
+    } catch (searchError) {
+      setError(searchError.message);
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+  return (
+    <section className="retrieval-panel">
+      <div className="retrieval-heading"><div><b>檢索驗證</b><span>先確認正確證據能否被找到，再進行欄位擷取。</span></div></div>
+      <div className="search-box">
+        <Search size={16}/>
+        <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => event.key === "Enter" && search()} placeholder="例如：ZnO 的退火溫度是多少？"/>
+        <button disabled={!query.trim() || isSearching} onClick={search}>{isSearching ? "搜尋中…" : "搜尋 Top 5"}</button>
+      </div>
+      {error && <div className="error-message" role="alert">{error}</div>}
+      {results.length > 0 && <div className="retrieval-results">{results.map((result, index) => (
+        <article key={`${result.document_id}-${result.chunk_index}`}>
+          <div><b>#{index + 1} · {result.filename}</b><span>第 {result.page_number} 頁 · Chunk {result.chunk_index + 1} · 相似度 {(result.score * 100).toFixed(1)}%</span></div>
+          <p>{result.text}</p>
+        </article>
+      ))}</div>}
+      {!isSearching && hasSearched && results.length === 0 && !error && <p className="no-results">索引中沒有相符內容。</p>}
+    </section>
+  );
+}
+
+function TableStep({ fields, documents, back }) {
   const [rows, setRows] = useState(() => {
-    const count = Math.max(files.length, 3);
-    return Array.from({length: count}, (_, rowIndex) =>
-      fields.map((_, columnIndex) => sampleValues[rowIndex]?.[columnIndex] || "—")
-    );
+    return documents.map(() => fields.map(() => "—"));
   });
+  const [extractions, setExtractions] = useState([]);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState("");
+  const [providerStatus, setProviderStatus] = useState(null);
+  useEffect(() => {
+    getExtractionStatus().then(setProviderStatus);
+  }, []);
   const updateCell = (ri, ci, value) => setRows(rows.map((row, r) => r === ri ? row.map((cell, c) => c === ci ? value : cell) : row));
   const addRow = () => setRows([...rows, fields.map(() => "—")]);
   const exportCsv = () => {
-    const csv = [fields, ...rows].map(row => row.map(cell => `"${String(cell).replaceAll('"','""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], {type:"text/csv;charset=utf-8"}));
-    const link = document.createElement("a"); link.href = url; link.download = "material-benchmark.csv"; link.click(); URL.revokeObjectURL(url);
+    downloadCsv([fields, ...rows]);
+  };
+  const runExtraction = async () => {
+    setIsExtracting(true);
+    setExtractionError("");
+    try {
+      const extractedDocuments = await extractFields(documents.map(document => document.document_id), fields);
+      setExtractions(extractedDocuments);
+      setRows(documents.map(document => {
+        const extracted = extractedDocuments.find(item => item.document_id === document.document_id);
+        return fields.map(field => {
+          const result = extracted?.fields.find(item => item.field === field);
+          return result?.value ? `${result.value}${result.unit ? ` ${result.unit}` : ""}` : "—";
+        });
+      }));
+    } catch (extractError) {
+      setExtractionError(extractError.message);
+    } finally {
+      setIsExtracting(false);
+    }
   };
   return (
     <section className="table-page">
       <div className="table-heading">
-        <div><span>步驟 3</span><h1>整理 Benchmark 表格</h1><p>{files.length} 份文獻 · {fields.length} 個比較項目</p></div>
-        <button className="export" onClick={exportCsv}><Download size={15}/>匯出 CSV</button>
+        <div><span>步驟 3</span><h1>PDF 解析結果</h1><p>{documents.length} 份文獻 · {fields.length} 個待擷取欄位</p></div>
+        <div className="heading-actions">
+          <button className="extract" disabled={isExtracting} onClick={runExtraction}><Sparkles size={15}/>{isExtracting ? "正在擷取…" : "自動擷取欄位"}</button>
+          <button className="export" onClick={exportCsv}><Download size={15}/>匯出 CSV</button>
+        </div>
       </div>
+      {extractionError && <div className="error-message table-error" role="alert">{extractionError}</div>}
+      {providerStatus && <div className={`provider-status ${providerStatus.configured ? "provider-ready" : "provider-missing"}`}>
+        LLM：{providerStatus.provider} · {providerStatus.model} · {providerStatus.configured ? "已設定" : "缺少 API 金鑰"}
+      </div>}
+      <div className="document-summary">
+        {documents.map(document => (
+          <div key={document.filename} className="document-summary-item">
+            <div className="document-summary-row">
+              <FileText size={16}/>
+              <div><b>{document.filename}</b><span>{document.page_count} 頁 · {document.character_count.toLocaleString()} 個字元 · {document.chunk_count} 個 chunks</span></div>
+              <span className={document.has_extractable_text ? "text-ready" : "text-missing"}>{document.has_extractable_text ? "文字已擷取" : "未偵測到文字，可能需要 OCR"}</span>
+            </div>
+            {document.chunks.length > 0 && (
+              <details className="chunk-preview">
+                <summary>檢視切分預覽</summary>
+                {document.chunks.slice(0, 3).map(chunk => (
+                  <div className="chunk-card" key={chunk.chunk_index}>
+                    <span>Chunk {chunk.chunk_index + 1} · 第 {chunk.page_number} 頁 · {chunk.character_count} 字元</span>
+                    <p>{chunk.text}</p>
+                  </div>
+                ))}
+                {document.chunk_count > 3 && <small>目前顯示前 3 個，共 {document.chunk_count} 個 chunks。</small>}
+              </details>
+            )}
+          </div>
+        ))}
+      </div>
+      <RetrievalPanel documents={documents}/>
       <div className="table-card">
         <table>
-          <thead><tr><th>#</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
+          <thead><tr><th>#</th><th>文獻</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
           <tbody>{rows.map((row, ri) => (
-            <tr key={ri}><td>{ri + 1}</td>{row.map((cell, ci) =>
+            <tr key={ri}><td>{ri + 1}</td><td className="filename-cell">{documents[ri]?.filename || "—"}</td>{row.map((cell, ci) =>
               <td key={ci}><input value={cell} onChange={e => updateCell(ri, ci, e.target.value)}/></td>
             )}</tr>
           ))}</tbody>
         </table>
         <button className="add-row" onClick={addRow}><Plus size={15}/>新增一列</button>
       </div>
+      {extractions.length > 0 && <section className="citation-panel">
+        <h2>擷取證據</h2>
+        {extractions.map(document => (
+          <details key={document.document_id}>
+            <summary>{document.filename}</summary>
+            {document.fields.map(field => (
+              <div className="citation-field" key={field.field}>
+                <b>{field.field}</b><span>{field.value ? `${field.value}${field.unit ? ` ${field.unit}` : ""}` : "未找到"} · {field.confidence}</span>
+                {field.citations.map(citation => <blockquote key={`${citation.page_number}-${citation.chunk_index}`}><small>第 {citation.page_number} 頁 · 相似度 {(citation.score * 100).toFixed(1)}%</small>{citation.text}</blockquote>)}
+              </div>
+            ))}
+          </details>
+        ))}
+      </section>}
       <div className="actions split table-actions">
         <button className="back" onClick={back}><ArrowLeft size={16}/>返回文獻</button>
         <span><Check size={14}/>表格內容可直接點擊修改</span>
@@ -165,14 +283,19 @@ function App() {
   const [step, setStep] = useState(1);
   const [fields, setFields] = useState(initialFields);
   const [files, setFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const finishParsing = parsedDocuments => {
+    setDocuments(parsedDocuments);
+    setStep(3);
+  };
   return (
     <div className="app">
       <Header/>
       <main>
         <Stepper step={step}/>
         {step === 1 && <FieldStep fields={fields} setFields={setFields} next={() => setStep(2)}/>}
-        {step === 2 && <UploadStep files={files} setFiles={setFiles} back={() => setStep(1)} next={() => setStep(3)}/>}
-        {step === 3 && <TableStep fields={fields} files={files} back={() => setStep(2)}/>}
+        {step === 2 && <UploadStep files={files} setFiles={setFiles} back={() => setStep(1)} onParse={finishParsing}/>}
+        {step === 3 && <TableStep fields={fields} documents={documents} back={() => setStep(2)}/>}
       </main>
     </div>
   );
