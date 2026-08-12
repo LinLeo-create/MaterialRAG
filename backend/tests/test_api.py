@@ -52,6 +52,7 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         document = response.json()["documents"][0]
         self.assertEqual(document["filename"], "paper.pdf")
+        self.assertEqual(document["title"], "paper")
         self.assertEqual(document["page_count"], 1)
         self.assertFalse(document["has_extractable_text"])
         self.assertEqual(document["chunk_count"], 0)

@@ -16,6 +16,7 @@ class ChunkResult(BaseModel):
 
 class DocumentResult(BaseModel):
     filename: str
+    title: str
     page_count: int = Field(ge=0)
     character_count: int = Field(ge=0)
     has_extractable_text: bool
@@ -31,6 +32,7 @@ class ParseResponse(BaseModel):
 class IndexedDocument(BaseModel):
     document_id: str
     filename: str
+    title: str
     page_count: int = Field(ge=0)
     character_count: int = Field(ge=0)
     has_extractable_text: bool

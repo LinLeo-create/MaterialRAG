@@ -21,6 +21,7 @@
   "documents": [
     {
       "filename": "paper.pdf",
+      "title": "Optical Properties of ZnO Thin Films",
       "page_count": 2,
       "character_count": 1200,
       "has_extractable_text": true,
@@ -65,6 +66,7 @@
     {
       "document_id": "a SHA-256 digest",
       "filename": "paper.pdf",
+      "title": "Optical Properties of ZnO Thin Films",
       "page_count": 2,
       "character_count": 1200,
       "has_extractable_text": true,

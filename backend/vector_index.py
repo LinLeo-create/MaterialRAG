@@ -65,6 +65,7 @@ class VectorIndex:
             return IndexedDocument(
                 document_id=document_id,
                 filename=document.filename,
+                title=document.title,
                 page_count=document.page_count,
                 character_count=document.character_count,
                 has_extractable_text=document.has_extractable_text,
@@ -84,6 +85,7 @@ class VectorIndex:
                     {
                         "document_id": document_id,
                         "filename": document.filename,
+                        "title": document.title,
                         "page_number": chunk.page_number,
                         "chunk_index": chunk.chunk_index,
                     }
@@ -93,6 +95,7 @@ class VectorIndex:
         return IndexedDocument(
             document_id=document_id,
             filename=document.filename,
+            title=document.title,
             page_count=document.page_count,
             character_count=document.character_count,
             has_extractable_text=document.has_extractable_text,

@@ -38,6 +38,7 @@ def document() -> DocumentResult:
     ]
     return DocumentResult(
         filename="paper.pdf",
+        title="Optical properties of ZnO films",
         page_count=4,
         character_count=77,
         has_extractable_text=True,

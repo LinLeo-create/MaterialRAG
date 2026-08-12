@@ -188,7 +188,10 @@ function TableStep({ fields, documents, back }) {
   const updateCell = (ri, ci, value) => setRows(rows.map((row, r) => r === ri ? row.map((cell, c) => c === ci ? value : cell) : row));
   const addRow = () => setRows([...rows, fields.map(() => "—")]);
   const exportCsv = () => {
-    downloadCsv([fields, ...rows]);
+    downloadCsv([
+      ["文獻標題", ...fields],
+      ...rows.map((row, index) => [documents[index]?.title || "—", ...row]),
+    ]);
   };
   const runExtraction = async () => {
     setIsExtracting(true);
@@ -227,7 +230,7 @@ function TableStep({ fields, documents, back }) {
           <div key={document.filename} className="document-summary-item">
             <div className="document-summary-row">
               <FileText size={16}/>
-              <div><b>{document.filename}</b><span>{document.page_count} 頁 · {document.character_count.toLocaleString()} 個字元 · {document.chunk_count} 個 chunks</span></div>
+              <div><b>{document.title}</b><span>{document.filename} · {document.page_count} 頁 · {document.character_count.toLocaleString()} 個字元 · {document.chunk_count} 個 chunks</span></div>
               <span className={document.has_extractable_text ? "text-ready" : "text-missing"}>{document.has_extractable_text ? "文字已擷取" : "未偵測到文字，可能需要 OCR"}</span>
             </div>
             {document.chunks.length > 0 && (
@@ -248,9 +251,9 @@ function TableStep({ fields, documents, back }) {
       <RetrievalPanel documents={documents}/>
       <div className="table-card">
         <table>
-          <thead><tr><th>#</th><th>文獻</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
+          <thead><tr><th>#</th><th>文獻標題</th>{fields.map(field => <th key={field}>{field}</th>)}</tr></thead>
           <tbody>{rows.map((row, ri) => (
-            <tr key={ri}><td>{ri + 1}</td><td className="filename-cell">{documents[ri]?.filename || "—"}</td>{row.map((cell, ci) =>
+            <tr key={ri}><td>{ri + 1}</td><td className="title-cell">{documents[ri]?.title || "—"}</td>{row.map((cell, ci) =>
               <td key={ci}><input value={cell} onChange={e => updateCell(ri, ci, e.target.value)}/></td>
             )}</tr>
           ))}</tbody>
