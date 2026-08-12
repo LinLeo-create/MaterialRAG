@@ -96,9 +96,10 @@ class GeminiExtractionProvider:
         client=None,
     ) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model = model or os.getenv(
-            "GEMINI_EXTRACTION_MODEL", "gemini-2.5-flash"
+        configured_model = model or os.getenv(
+            "GEMINI_EXTRACTION_MODEL", "gemini-3.5-flash"
         )
+        self.model = configured_model.removeprefix("models/")
         self._client = client
 
     def extract(
@@ -117,16 +118,25 @@ class GeminiExtractionProvider:
 
         from google.genai import types
 
-        response = self._client.models.generate_content(
-            model=self.model,
-            contents=_extraction_input(fields, evidence),
-            config=types.GenerateContentConfig(
-                system_instruction=_INSTRUCTIONS,
-                response_mime_type="application/json",
-                response_schema=ExtractionDraft,
-                temperature=0,
-            ),
-        )
+        try:
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=_extraction_input(fields, evidence),
+                config=types.GenerateContentConfig(
+                    system_instruction=_INSTRUCTIONS,
+                    response_mime_type="application/json",
+                    response_schema=ExtractionDraft,
+                    temperature=0,
+                ),
+            )
+        except Exception as exc:
+            if "404" in str(exc) or "NOT_FOUND" in str(exc):
+                raise ExtractionConfigurationError(
+                    f"Gemini 模型 {self.model} 無法使用。請將 "
+                    "GEMINI_EXTRACTION_MODEL 改成 models.list() 回傳的可用文字模型，"
+                    "例如 gemini-3.5-flash，然後重新啟動後端。"
+                ) from exc
+            raise
         if response.parsed is not None:
             return (
                 response.parsed
@@ -154,7 +164,9 @@ def extraction_provider_status() -> tuple[str, str, bool]:
     if name == "gemini":
         return (
             name,
-            os.getenv("GEMINI_EXTRACTION_MODEL", "gemini-2.5-flash"),
+            os.getenv("GEMINI_EXTRACTION_MODEL", "gemini-3.5-flash").removeprefix(
+                "models/"
+            ),
             bool(os.getenv("GEMINI_API_KEY")),
         )
     if name == "openai":

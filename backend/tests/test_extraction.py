@@ -142,6 +142,22 @@ class GeminiProviderTestCase(unittest.TestCase):
             with self.assertRaisesRegex(Exception, "GEMINI_API_KEY"):
                 provider.extract([], [])
 
+    def test_removes_models_prefix(self):
+        provider = GeminiExtractionProvider(
+            client=type("Client", (), {})(), model="models/gemini-3.5-flash"
+        )
+        self.assertEqual(provider.model, "gemini-3.5-flash")
+
+    def test_unavailable_model_has_actionable_error(self):
+        class Models:
+            def generate_content(self, **kwargs):
+                raise RuntimeError("404 NOT_FOUND")
+
+        client = type("Client", (), {"models": Models()})()
+        provider = GeminiExtractionProvider(client=client, model="retired-model")
+        with self.assertRaisesRegex(Exception, "gemini-3.5-flash"):
+            provider.extract([], [])
+
     def test_factory_selects_configured_provider(self):
         self.assertIsInstance(create_extraction_provider("gemini"), GeminiExtractionProvider)
         self.assertIsInstance(create_extraction_provider("openai"), OpenAIExtractionProvider)

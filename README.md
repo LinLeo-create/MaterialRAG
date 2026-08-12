@@ -65,7 +65,7 @@ npm.cmd run dev
 ```text
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=你的 Google AI Studio API 金鑰
-GEMINI_EXTRACTION_MODEL=gemini-2.5-flash
+GEMINI_EXTRACTION_MODEL=gemini-3.5-flash
 ```
 
 也可切回 OpenAI：
@@ -108,7 +108,7 @@ backend/           PDF 解析 API 與後端測試
 | `MATERIALRAG_EMBEDDING_MODEL` | Sentence Transformers 模型 | `BAAI/bge-m3` |
 | `LLM_PROVIDER` | 欄位擷取服務 | `gemini` |
 | `GEMINI_API_KEY` | Google AI Studio API 金鑰 | 無 |
-| `GEMINI_EXTRACTION_MODEL` | Gemini 結構化擷取模型 | `gemini-2.5-flash` |
+| `GEMINI_EXTRACTION_MODEL` | Gemini 結構化擷取模型 | `gemini-3.5-flash` |
 | `OPENAI_API_KEY` | 可選的 OpenAI API 金鑰 | 無 |
 | `OPENAI_EXTRACTION_MODEL` | 可選的 OpenAI 擷取模型 | `gpt-5.6-luna` |
 
