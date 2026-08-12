@@ -159,4 +159,20 @@
 ```
 
 - `502`：模型服務或結構化輸出失敗。
-- `503`：尚未設定 `OPENAI_API_KEY`。
+- `503`：目前選擇的 provider 尚未設定 API 金鑰。
+
+實際 provider 由 `LLM_PROVIDER=openai|gemini` 決定。Gemini 使用 `GEMINI_API_KEY` 與 `GEMINI_EXTRACTION_MODEL`；OpenAI 使用對應的 `OPENAI_` 變數。
+
+## 擷取服務狀態
+
+`GET /api/extraction/status`
+
+```json
+{
+  "provider": "gemini",
+  "model": "gemini-2.5-flash",
+  "configured": true
+}
+```
+
+此端點只回傳是否已設定金鑰，不會回傳金鑰內容。

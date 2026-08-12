@@ -37,6 +37,25 @@ class ExtractionProvider(Protocol):
     ) -> ExtractionDraft: ...
 
 
+_INSTRUCTIONS = (
+    "You extract material-science facts only from supplied evidence. "
+    "Return every requested field exactly once. Never infer a missing value. "
+    "If evidence is insufficient, set value and unit to null, confidence to "
+    "not_found, and evidence_ids to an empty list. Only cite provided evidence IDs."
+)
+
+
+def _extraction_input(
+    fields: Sequence[str], evidence: Sequence[EvidenceItem]
+) -> str:
+    evidence_text = "\n\n".join(
+        f"[{item.evidence_id}] field={item.field}; file={item.result.filename}; "
+        f"page={item.result.page_number}\n{item.result.text}"
+        for item in evidence
+    )
+    return f"Requested fields: {list(fields)}\n\nEvidence:\n{evidence_text}"
+
+
 class OpenAIExtractionProvider:
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -57,26 +76,94 @@ class OpenAIExtractionProvider:
 
             self._client = OpenAI(api_key=self.api_key)
 
-        evidence_text = "\n\n".join(
-            f"[{item.evidence_id}] field={item.field}; file={item.result.filename}; "
-            f"page={item.result.page_number}\n{item.result.text}"
-            for item in evidence
-        )
         response = self._client.responses.parse(
             model=self.model,
-            instructions=(
-                "You extract material-science facts only from supplied evidence. "
-                "Return every requested field exactly once. Never infer a missing value. "
-                "If evidence is insufficient, set value and unit to null, confidence to "
-                "not_found, and evidence_ids to an empty list. Only cite provided evidence IDs."
-            ),
-            input=f"Requested fields: {list(fields)}\n\nEvidence:\n{evidence_text}",
+            instructions=_INSTRUCTIONS,
+            input=_extraction_input(fields, evidence),
             text_format=ExtractionDraft,
             store=False,
         )
         if response.output_parsed is None:
             raise RuntimeError("LLM 未回傳可解析的結構化結果。")
         return response.output_parsed
+
+
+class GeminiExtractionProvider:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        client=None,
+    ) -> None:
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.model = model or os.getenv(
+            "GEMINI_EXTRACTION_MODEL", "gemini-2.5-flash"
+        )
+        self._client = client
+
+    def extract(
+        self,
+        fields: Sequence[str],
+        evidence: Sequence[EvidenceItem],
+    ) -> ExtractionDraft:
+        if not self.api_key and self._client is None:
+            raise ExtractionConfigurationError(
+                "尚未設定 GEMINI_API_KEY，無法執行 LLM 欄位擷取。"
+            )
+        if self._client is None:
+            from google import genai
+
+            self._client = genai.Client(api_key=self.api_key)
+
+        from google.genai import types
+
+        response = self._client.models.generate_content(
+            model=self.model,
+            contents=_extraction_input(fields, evidence),
+            config=types.GenerateContentConfig(
+                system_instruction=_INSTRUCTIONS,
+                response_mime_type="application/json",
+                response_schema=ExtractionDraft,
+                temperature=0,
+            ),
+        )
+        if response.parsed is not None:
+            return (
+                response.parsed
+                if isinstance(response.parsed, ExtractionDraft)
+                else ExtractionDraft.model_validate(response.parsed)
+            )
+        if not response.text:
+            raise RuntimeError("Gemini 未回傳可解析的結構化結果。")
+        return ExtractionDraft.model_validate_json(response.text)
+
+
+def create_extraction_provider(provider_name: str | None = None) -> ExtractionProvider:
+    name = (provider_name or os.getenv("LLM_PROVIDER", "openai")).strip().lower()
+    if name == "openai":
+        return OpenAIExtractionProvider()
+    if name == "gemini":
+        return GeminiExtractionProvider()
+    raise ExtractionConfigurationError(
+        f"不支援的 LLM_PROVIDER：{name}。可用值為 openai、gemini。"
+    )
+
+
+def extraction_provider_status() -> tuple[str, str, bool]:
+    name = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+    if name == "gemini":
+        return (
+            name,
+            os.getenv("GEMINI_EXTRACTION_MODEL", "gemini-2.5-flash"),
+            bool(os.getenv("GEMINI_API_KEY")),
+        )
+    if name == "openai":
+        return (
+            name,
+            os.getenv("OPENAI_EXTRACTION_MODEL", "gpt-5.6-luna"),
+            bool(os.getenv("OPENAI_API_KEY")),
+        )
+    return name, "unknown", False
 
 
 class ExtractionService:

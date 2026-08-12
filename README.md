@@ -60,14 +60,23 @@ npm.cmd run dev
 
 建立索引後，可在結果頁的「檢索驗證」輸入問題並查看 Top-5 內容、相似度、來源文件與頁碼。目前此功能只驗證證據檢索，尚未呼叫 LLM 生成答案。
 
-若要使用「自動擷取欄位」，請在 `.env.local` 設定 OpenAI Platform API 金鑰：
+若要使用「自動擷取欄位」，建議在 `.env.local` 設定 Gemini API：
 
 ```text
-OPENAI_API_KEY=你的 API 金鑰
-OPENAI_EXTRACTION_MODEL=gpt-5.6-luna
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=你的 Google AI Studio API 金鑰
+GEMINI_EXTRACTION_MODEL=gemini-2.5-flash
 ```
 
-API 金鑰屬於後端設定，請勿加上 `VITE_` 前綴。欄位擷取會針對每份文件逐欄檢索證據，再要求模型回傳結構化結果；沒有有效來源引用的值會被捨棄。此功能使用 OpenAI API 額度，與 ChatGPT 登入或訂閱分開。
+也可切回 OpenAI：
+
+```text
+LLM_PROVIDER=openai
+OPENAI_API_KEY=你的 OpenAI Platform API 金鑰
+OPENAI_EXTRACTION_MODEL=你的帳戶可用模型
+```
+
+API 金鑰屬於後端設定，請勿加上 `VITE_` 前綴。欄位擷取會針對每份文件逐欄檢索證據，再要求模型回傳結構化結果；沒有有效來源引用的值會被捨棄。雲端 API 的額度與網頁版登入或訂閱分開。
 
 ## 品質檢查
 
@@ -97,7 +106,10 @@ backend/           PDF 解析 API 與後端測試
 | `FRONTEND_ORIGIN` | 允許呼叫後端的前端來源 | `http://localhost:5173` |
 | `MATERIALRAG_INDEX_PATH` | ChromaDB 持久化路徑 | `data/chroma` |
 | `MATERIALRAG_EMBEDDING_MODEL` | Sentence Transformers 模型 | `BAAI/bge-m3` |
-| `OPENAI_API_KEY` | 後端呼叫 OpenAI API 的金鑰 | 無 |
-| `OPENAI_EXTRACTION_MODEL` | 結構化欄位擷取模型 | `gpt-5.6-luna` |
+| `LLM_PROVIDER` | 欄位擷取服務 | `gemini` |
+| `GEMINI_API_KEY` | Google AI Studio API 金鑰 | 無 |
+| `GEMINI_EXTRACTION_MODEL` | Gemini 結構化擷取模型 | `gemini-2.5-flash` |
+| `OPENAI_API_KEY` | 可選的 OpenAI API 金鑰 | 無 |
+| `OPENAI_EXTRACTION_MODEL` | 可選的 OpenAI 擷取模型 | `gpt-5.6-luna` |
 
 請勿將 API 金鑰放在 `VITE_` 開頭的變數中；這類變數會被打包到瀏覽器端。模型金鑰將由後端環境管理。

@@ -1,10 +1,14 @@
 import unittest
+from unittest.mock import patch
 
 from backend.extraction import (
     EvidenceItem,
     ExtractionDraft,
     ExtractionService,
     ExtractedFieldDraft,
+    GeminiExtractionProvider,
+    OpenAIExtractionProvider,
+    create_extraction_provider,
 )
 from backend.schemas import SearchResult
 
@@ -80,6 +84,69 @@ class ExtractionServiceTestCase(unittest.TestCase):
         self.assertIsNone(result.fields[0].value)
         self.assertEqual(result.fields[0].confidence, "not_found")
         self.assertEqual(result.fields[0].citations, [])
+
+
+class GeminiProviderTestCase(unittest.TestCase):
+    def test_parses_structured_gemini_response(self):
+        class Models:
+            def generate_content(self, **kwargs):
+                self.arguments = kwargs
+                return type(
+                    "Response",
+                    (),
+                    {
+                        "parsed": {
+                            "fields": [
+                                {
+                                    "field": "能隙",
+                                    "value": "3.2",
+                                    "unit": "eV",
+                                    "confidence": "high",
+                                    "evidence_ids": ["E1"],
+                                }
+                            ]
+                        },
+                        "text": None,
+                    },
+                )()
+
+        client = type("Client", (), {"models": Models()})()
+        provider = GeminiExtractionProvider(client=client, model="gemini-test")
+        draft = provider.extract(
+            ["能隙"],
+            [
+                EvidenceItem(
+                    evidence_id="E1",
+                    field="能隙",
+                    result=SearchResult(
+                        document_id="doc-a",
+                        filename="paper.pdf",
+                        page_number=2,
+                        chunk_index=1,
+                        text="The bandgap is 3.2 eV.",
+                        score=0.9,
+                    ),
+                )
+            ],
+        )
+        self.assertEqual(draft.fields[0].value, "3.2")
+        self.assertEqual(client.models.arguments["model"], "gemini-test")
+        self.assertEqual(
+            client.models.arguments["config"].response_mime_type,
+            "application/json",
+        )
+
+    def test_requires_gemini_api_key(self):
+        with patch.dict("os.environ", {}, clear=True):
+            provider = GeminiExtractionProvider()
+            with self.assertRaisesRegex(Exception, "GEMINI_API_KEY"):
+                provider.extract([], [])
+
+    def test_factory_selects_configured_provider(self):
+        self.assertIsInstance(create_extraction_provider("gemini"), GeminiExtractionProvider)
+        self.assertIsInstance(create_extraction_provider("openai"), OpenAIExtractionProvider)
+        with self.assertRaisesRegex(Exception, "不支援"):
+            create_extraction_provider("unknown")
 
 
 if __name__ == "__main__":

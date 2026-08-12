@@ -97,3 +97,9 @@ class DocumentExtraction(BaseModel):
 
 class ExtractionResponse(BaseModel):
     documents: list[DocumentExtraction]
+
+
+class ExtractionStatus(BaseModel):
+    provider: str
+    model: str
+    configured: bool

@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .extraction import (
     ExtractionConfigurationError,
+    ExtractionProvider,
     ExtractionService,
-    OpenAIExtractionProvider,
+    create_extraction_provider,
+    extraction_provider_status,
 )
 from .pdf_parser import InvalidPdfError, parse_pdf
 from .schemas import (
@@ -16,6 +18,7 @@ from .schemas import (
     DocumentResult,
     ExtractionRequest,
     ExtractionResponse,
+    ExtractionStatus,
     IndexResponse,
     ParseResponse,
     SearchRequest,
@@ -41,14 +44,20 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/extraction/status", response_model=ExtractionStatus)
+def extraction_status() -> ExtractionStatus:
+    provider, model, configured = extraction_provider_status()
+    return ExtractionStatus(provider=provider, model=model, configured=configured)
+
+
 @lru_cache
 def get_vector_index() -> VectorIndex:
     return VectorIndex()
 
 
 @lru_cache
-def get_extraction_provider() -> OpenAIExtractionProvider:
-    return OpenAIExtractionProvider()
+def get_extraction_provider() -> ExtractionProvider:
+    return create_extraction_provider()
 
 
 async def read_and_parse_documents(
@@ -144,7 +153,7 @@ async def delete_document(
 async def extract_fields(
     request: ExtractionRequest,
     index: VectorIndex = Depends(get_vector_index),
-    provider: OpenAIExtractionProvider = Depends(get_extraction_provider),
+    provider: ExtractionProvider = Depends(get_extraction_provider),
 ) -> ExtractionResponse:
     fields = list(dict.fromkeys(field.strip() for field in request.fields if field.strip()))
     if not fields:

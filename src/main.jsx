@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft, ArrowRight, Check, Download, FileText, FlaskConical,
@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { downloadCsv } from "./csv.js";
-import { extractFields, indexDocuments, searchDocuments } from "./api.js";
+import { extractFields, getExtractionStatus, indexDocuments, searchDocuments } from "./api.js";
 
 const initialFields = ["材料名稱", "製程方法", "退火溫度", "能隙"];
 
@@ -181,6 +181,10 @@ function TableStep({ fields, documents, back }) {
   const [extractions, setExtractions] = useState([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState("");
+  const [providerStatus, setProviderStatus] = useState(null);
+  useEffect(() => {
+    getExtractionStatus().then(setProviderStatus);
+  }, []);
   const updateCell = (ri, ci, value) => setRows(rows.map((row, r) => r === ri ? row.map((cell, c) => c === ci ? value : cell) : row));
   const addRow = () => setRows([...rows, fields.map(() => "—")]);
   const exportCsv = () => {
@@ -215,6 +219,9 @@ function TableStep({ fields, documents, back }) {
         </div>
       </div>
       {extractionError && <div className="error-message table-error" role="alert">{extractionError}</div>}
+      {providerStatus && <div className={`provider-status ${providerStatus.configured ? "provider-ready" : "provider-missing"}`}>
+        LLM：{providerStatus.provider} · {providerStatus.model} · {providerStatus.configured ? "已設定" : "缺少 API 金鑰"}
+      </div>}
       <div className="document-summary">
         {documents.map(document => (
           <div key={document.filename} className="document-summary-item">

@@ -1,5 +1,6 @@
 from io import BytesIO
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
@@ -24,6 +25,24 @@ class ApiTestCase(unittest.TestCase):
         response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+    def test_extraction_status_does_not_expose_api_key(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "LLM_PROVIDER": "gemini",
+                "GEMINI_API_KEY": "secret-value",
+                "GEMINI_EXTRACTION_MODEL": "gemini-test",
+            },
+            clear=False,
+        ):
+            response = self.client.get("/api/extraction/status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"provider": "gemini", "model": "gemini-test", "configured": True},
+        )
+        self.assertNotIn("secret-value", response.text)
 
     def test_parses_pdf_and_preserves_page_number(self):
         response = self.client.post(

@@ -56,3 +56,13 @@ export async function extractFields(documentIds, fields, topK = 5) {
   }
   return payload.documents;
 }
+
+export async function getExtractionStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/extraction/status`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
