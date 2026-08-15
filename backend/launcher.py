@@ -3,6 +3,7 @@ from collections.abc import Callable
 import os
 from pathlib import Path
 import socket
+import sys
 import threading
 import time
 import webbrowser
@@ -10,7 +11,9 @@ import webbrowser
 import uvicorn
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+FROZEN = bool(getattr(sys, "frozen", False))
+APP_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
+BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", APP_ROOT))
 
 
 def find_available_port(host: str, preferred_port: int, attempts: int = 20) -> int:
@@ -63,14 +66,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    frontend = PROJECT_ROOT / "dist" / "index.html"
+    frontend = BUNDLE_ROOT / "dist" / "index.html"
     if not frontend.is_file():
         raise SystemExit("找不到正式前端，請先執行 npm run build。")
+
+    if FROZEN:
+        os.environ.setdefault("MATERIALRAG_FRONTEND_PATH", str(frontend.parent))
+        os.environ.setdefault("MATERIALRAG_INDEX_PATH", str(APP_ROOT / "data" / "chroma"))
 
     host = "127.0.0.1"
     port = find_available_port(host, args.port)
     url = f"http://{host}:{port}"
-    env_file = PROJECT_ROOT / ".env.local"
+    env_file = APP_ROOT / ".env.local"
     config = uvicorn.Config(
         "backend.main:app",
         host=host,

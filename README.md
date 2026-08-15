@@ -61,6 +61,19 @@ python -m backend.launcher
 
 若不希望自動開啟瀏覽器，可加上 `--no-browser`。
 
+## 建立 Windows 成品
+
+先安裝打包工具，再執行建置腳本：
+
+```bat
+conda activate materialrag
+python -m pip install -r requirements-build.txt
+powershell -ExecutionPolicy Bypass -File build_windows.ps1
+```
+
+成品位於 `dist\MaterialRAG`。Embedding 模型會在第一次建立索引時下載，
+Gemini API Key 由應用程式設定並使用 Windows DPAPI 保存，不會寫入成品。
+
 再開啟第二個 CMD 視窗啟動前端：
 
 ```bat
