@@ -265,7 +265,7 @@ function GeminiConfiguration() {
   const hasSavedGemini = providerStatus?.configured && providerStatus.provider === "gemini";
 
   return (
-    <section className="gemini-configuration global-gemini-configuration">
+    <section className="gemini-configuration">
       <div>
         <b>Gemini API</b>
         <span>{hasSavedGemini
@@ -341,6 +341,7 @@ function TableStep({ fields, documents, back }) {
           <button className="export" onClick={exportCsv}><Download size={15}/>匯出 CSV</button>
         </div>
       </div>
+      <GeminiConfiguration/>
       {extractionError && <div className="error-message table-error" role="alert">{extractionError}</div>}
       <div className="document-summary">
         {documents.map(document => (
@@ -413,7 +414,6 @@ function App() {
       <Header/>
       <main>
         <Stepper step={step}/>
-        <GeminiConfiguration/>
         {step === 1 && <FieldStep fields={fields} setFields={setFields} next={() => setStep(2)}/>}
         {step === 2 && <UploadStep files={files} setFiles={setFiles} back={() => setStep(1)} onParse={finishParsing}/>}
         {step === 3 && <TableStep fields={fields} documents={documents} back={() => setStep(2)}/>}
