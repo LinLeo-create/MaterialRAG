@@ -52,6 +52,15 @@ python -m uvicorn backend.main:app --reload --port 8000 --env-file .env.local
 `http://localhost:8000`，不需要另外啟動 Vite。可使用
 `MATERIALRAG_FRONTEND_PATH` 指定其他前端成品目錄。
 
+也可以使用整合啟動入口；若 8000 已被占用，程式會自動嘗試下一個連接埠：
+
+```bat
+conda activate materialrag
+python -m backend.launcher
+```
+
+若不希望自動開啟瀏覽器，可加上 `--no-browser`。
+
 再開啟第二個 CMD 視窗啟動前端：
 
 ```bat
