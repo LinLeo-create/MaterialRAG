@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  ArrowLeft, ArrowRight, Check, Download, FileText, FlaskConical,
-  GripVertical, Plus, Search, Sparkles, Trash2, Upload, X
+  AlertCircle, ArrowLeft, ArrowRight, Check, Clock3, Download, FileText,
+  FlaskConical, GripVertical, LoaderCircle, Plus, Search, Sparkles, Trash2,
+  Upload, X
 } from "lucide-react";
 import "./styles.css";
 import { downloadCsv } from "./csv.js";
@@ -83,21 +84,70 @@ function UploadStep({ files, setFiles, back, onParse }) {
   const inputRef = useRef();
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState("");
+  const [fileStatuses, setFileStatuses] = useState({});
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
   const addFiles = e => {
     const selected = [...e.target.files].filter(file => !files.some(f => f.name === file.name));
     setFiles([...files, ...selected]);
+    setFileStatuses(statuses => ({
+      ...statuses,
+      ...Object.fromEntries(selected.map(file => [file.name, { state: "pending" }]))
+    }));
     setError("");
+    e.target.value = "";
+  };
+  const removeFile = index => {
+    const filename = files[index].name;
+    setFiles(files.filter((_, i) => i !== index));
+    setFileStatuses(statuses => {
+      const next = { ...statuses };
+      delete next[filename];
+      return next;
+    });
   };
   const parse = async () => {
     setIsParsing(true);
     setError("");
-    try {
-      onParse(await indexDocuments(files));
-    } catch (parseError) {
-      setError(parseError.message);
-    } finally {
-      setIsParsing(false);
+    setProgress({ current: 0, total: files.length });
+    setFileStatuses(Object.fromEntries(files.map(file => [file.name, { state: "pending" }])));
+    const documents = [];
+    const failures = [];
+
+    for (const [index, file] of files.entries()) {
+      setProgress({ current: index + 1, total: files.length });
+      setFileStatuses(statuses => ({
+        ...statuses,
+        [file.name]: { state: "parsing" }
+      }));
+      try {
+        const [document] = await indexDocuments([file]);
+        documents.push(document);
+        setFileStatuses(statuses => ({
+          ...statuses,
+          [file.name]: { state: "completed" }
+        }));
+      } catch (parseError) {
+        failures.push(file.name);
+        setFileStatuses(statuses => ({
+          ...statuses,
+          [file.name]: { state: "failed", message: parseError.message }
+        }));
+      }
     }
+
+    if (failures.length === 0) {
+      onParse(documents);
+    } else {
+      setError(`${failures.length} 份 PDF 解析失敗；可查看各檔案狀態後重新執行。`);
+    }
+    setIsParsing(false);
+  };
+  const statusView = file => {
+    const status = fileStatuses[file.name]?.state || "pending";
+    if (status === "parsing") return <span className="file-status parsing"><LoaderCircle size={13}/>解析中</span>;
+    if (status === "completed") return <span className="file-status completed"><Check size={13}/>已完成</span>;
+    if (status === "failed") return <span className="file-status failed" title={fileStatuses[file.name]?.message}><AlertCircle size={13}/>失敗</span>;
+    return <span className="file-status pending"><Clock3 size={13}/>等待中</span>;
   };
   return (
     <section className="card upload-step">
@@ -119,7 +169,8 @@ function UploadStep({ files, setFiles, back, onParse }) {
             <div className="file-row" key={file.name}>
               <FileText size={17}/>
               <div><b>{file.name}</b><span>{(file.size / 1048576).toFixed(1)} MB</span></div>
-              <button onClick={() => setFiles(files.filter((_, i) => i !== index))}><Trash2 size={15}/></button>
+              {statusView(file)}
+              <button disabled={isParsing} onClick={() => removeFile(index)}><Trash2 size={15}/></button>
             </div>
           ))}
         </div>
@@ -127,7 +178,7 @@ function UploadStep({ files, setFiles, back, onParse }) {
       {error && <div className="error-message" role="alert">{error}</div>}
       <div className="actions split">
         <button className="back" disabled={isParsing} onClick={back}><ArrowLeft size={16}/>上一步</button>
-        <button className="primary" disabled={!files.length || isParsing} onClick={parse}>{isParsing ? "正在建立索引…" : "解析並建立索引"}<Sparkles size={15}/></button>
+        <button className="primary" disabled={!files.length || isParsing} onClick={parse}>{isParsing ? `正在解析 ${progress.current}/${progress.total}` : "逐份解析並建立索引"}<Sparkles size={15}/></button>
       </div>
     </section>
   );

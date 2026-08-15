@@ -108,6 +108,8 @@ backend/           PDF 解析 API 與後端測試
 | `FRONTEND_ORIGIN` | 允許呼叫後端的前端來源 | `http://localhost:5173` |
 | `MATERIALRAG_INDEX_PATH` | ChromaDB 持久化路徑 | `data/chroma` |
 | `MATERIALRAG_EMBEDDING_MODEL` | Sentence Transformers 模型 | `BAAI/bge-m3` |
+| `MATERIALRAG_EMBEDDING_BATCH_SIZE` | 每次送入向量模型的 chunks 數量；GPU 記憶體足夠時可提高 | `32` |
+| `MATERIALRAG_UPSERT_BATCH_SIZE` | 每批向量化並寫入 ChromaDB 的 chunks 數量 | `256` |
 | `LLM_PROVIDER` | 欄位擷取服務 | `gemini` |
 | `GEMINI_API_KEY` | Google AI Studio API 金鑰 | 無 |
 | `GEMINI_EXTRACTION_MODEL` | Gemini 結構化擷取模型 | `gemini-3.5-flash` |

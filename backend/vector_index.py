@@ -14,8 +14,9 @@ class Embedder(Protocol):
 
 
 class BgeM3Embedder:
-    def __init__(self, model_name: str = "BAAI/bge-m3") -> None:
+    def __init__(self, model_name: str = "BAAI/bge-m3", batch_size: int = 32) -> None:
         self.model_name = model_name
+        self.batch_size = batch_size
         self._model = None
 
     def encode(self, texts: Sequence[str]) -> list[list[float]]:
@@ -25,6 +26,7 @@ class BgeM3Embedder:
             self._model = SentenceTransformer(self.model_name)
         embeddings = self._model.encode(
             list(texts),
+            batch_size=self.batch_size,
             normalize_embeddings=True,
             show_progress_bar=False,
         )
@@ -41,6 +43,7 @@ class VectorIndex:
         client=None,
         embedder: Embedder | None = None,
         collection_name: str = "materialrag_chunks",
+        upsert_batch_size: int | None = None,
     ) -> None:
         if client is None:
             index_path = Path(os.getenv("MATERIALRAG_INDEX_PATH", "data/chroma"))
@@ -50,8 +53,13 @@ class VectorIndex:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+        embedding_batch_size = _positive_int_env("MATERIALRAG_EMBEDDING_BATCH_SIZE", 32)
+        self.upsert_batch_size = upsert_batch_size or _positive_int_env(
+            "MATERIALRAG_UPSERT_BATCH_SIZE", 256
+        )
         self.embedder = embedder or BgeM3Embedder(
-            os.getenv("MATERIALRAG_EMBEDDING_MODEL", "BAAI/bge-m3")
+            os.getenv("MATERIALRAG_EMBEDDING_MODEL", "BAAI/bge-m3"),
+            batch_size=embedding_batch_size,
         )
 
     def index_document(
@@ -60,7 +68,8 @@ class VectorIndex:
         document: DocumentResult,
     ) -> IndexedDocument:
         existing = self.collection.get(where={"document_id": document_id}, include=[])
-        status = "unchanged" if existing["ids"] else "indexed"
+        is_complete = len(existing["ids"]) == document.chunk_count
+        status = "unchanged" if is_complete and existing["ids"] else "indexed"
         if status == "unchanged":
             return IndexedDocument(
                 document_id=document_id,
@@ -74,24 +83,29 @@ class VectorIndex:
                 status=status,
             )
 
+        if existing["ids"]:
+            self.collection.delete(where={"document_id": document_id})
+
         if document.chunks:
-            texts = [chunk.text for chunk in document.chunks]
-            embeddings = self.embedder.encode(texts)
-            self.collection.upsert(
-                ids=[f"{document_id}:{chunk.chunk_index}" for chunk in document.chunks],
-                documents=texts,
-                embeddings=embeddings,
-                metadatas=[
-                    {
-                        "document_id": document_id,
-                        "filename": document.filename,
-                        "title": document.title,
-                        "page_number": chunk.page_number,
-                        "chunk_index": chunk.chunk_index,
-                    }
-                    for chunk in document.chunks
-                ],
-            )
+            for start in range(0, len(document.chunks), self.upsert_batch_size):
+                chunks = document.chunks[start : start + self.upsert_batch_size]
+                texts = [chunk.text for chunk in chunks]
+                embeddings = self.embedder.encode(texts)
+                self.collection.upsert(
+                    ids=[f"{document_id}:{chunk.chunk_index}" for chunk in chunks],
+                    documents=texts,
+                    embeddings=embeddings,
+                    metadatas=[
+                        {
+                            "document_id": document_id,
+                            "filename": document.filename,
+                            "title": document.title,
+                            "page_number": chunk.page_number,
+                            "chunk_index": chunk.chunk_index,
+                        }
+                        for chunk in chunks
+                    ],
+                )
         return IndexedDocument(
             document_id=document_id,
             filename=document.filename,
@@ -151,3 +165,14 @@ class VectorIndex:
         if deleted:
             self.collection.delete(where={"document_id": document_id})
         return deleted
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default

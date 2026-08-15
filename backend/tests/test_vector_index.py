@@ -9,9 +9,13 @@ from backend.vector_index import VectorIndex, document_id_for
 
 
 class KeywordEmbedder:
+    def __init__(self):
+        self.batch_sizes = []
+
     terms = ("zno", "tio2", "anneal", "bandgap")
 
     def encode(self, texts):
+        self.batch_sizes.append(len(texts))
         vectors = []
         for text in texts:
             lowered = text.lower()
@@ -72,6 +76,29 @@ class VectorIndexTestCase(unittest.TestCase):
         self.index.index_document("doc-a", document())
         duplicate = self.index.index_document("doc-a", document())
         self.assertEqual(duplicate.status, "unchanged")
+        self.assertEqual(self.index.collection.count(), 2)
+
+    def test_indexes_in_configured_batches(self):
+        embedder = KeywordEmbedder()
+        index = VectorIndex(
+            client=chromadb.EphemeralClient(),
+            embedder=embedder,
+            collection_name=f"test_{uuid4().hex}",
+            upsert_batch_size=1,
+        )
+        index.index_document("doc-batched", document())
+        self.assertEqual(embedder.batch_sizes, [1, 1])
+        self.assertEqual(index.collection.count(), 2)
+
+    def test_rebuilds_an_incomplete_document(self):
+        self.index.collection.upsert(
+            ids=["doc-partial:0"],
+            documents=["stale partial text"],
+            embeddings=[[1.0, 0.0, 0.0, 0.0]],
+            metadatas=[{"document_id": "doc-partial"}],
+        )
+        indexed = self.index.index_document("doc-partial", document())
+        self.assertEqual(indexed.status, "indexed")
         self.assertEqual(self.index.collection.count(), 2)
 
     def test_filters_and_deletes_by_document_id(self):
