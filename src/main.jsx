@@ -82,6 +82,7 @@ function FieldStep({ fields, setFields, next }) {
 
 function UploadStep({ files, setFiles, back, onParse }) {
   const inputRef = useRef();
+  const completedDocumentsRef = useRef({});
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState("");
   const [fileStatuses, setFileStatuses] = useState({});
@@ -99,6 +100,7 @@ function UploadStep({ files, setFiles, back, onParse }) {
   const removeFile = index => {
     const filename = files[index].name;
     setFiles(files.filter((_, i) => i !== index));
+    delete completedDocumentsRef.current[filename];
     setFileStatuses(statuses => {
       const next = { ...statuses };
       delete next[filename];
@@ -108,20 +110,29 @@ function UploadStep({ files, setFiles, back, onParse }) {
   const parse = async () => {
     setIsParsing(true);
     setError("");
-    setProgress({ current: 0, total: files.length });
-    setFileStatuses(Object.fromEntries(files.map(file => [file.name, { state: "pending" }])));
-    const documents = [];
+    const pendingFiles = files.filter(
+      file => fileStatuses[file.name]?.state !== "completed"
+    );
+    setProgress({ current: 0, total: pendingFiles.length });
+    setFileStatuses(statuses => Object.fromEntries(
+      files.map(file => [
+        file.name,
+        statuses[file.name]?.state === "completed"
+          ? statuses[file.name]
+          : { state: "pending" }
+      ])
+    ));
     const failures = [];
 
-    for (const [index, file] of files.entries()) {
-      setProgress({ current: index + 1, total: files.length });
+    for (const [index, file] of pendingFiles.entries()) {
+      setProgress({ current: index + 1, total: pendingFiles.length });
       setFileStatuses(statuses => ({
         ...statuses,
         [file.name]: { state: "parsing" }
       }));
       try {
         const [document] = await indexDocuments([file]);
-        documents.push(document);
+        completedDocumentsRef.current[file.name] = document;
         setFileStatuses(statuses => ({
           ...statuses,
           [file.name]: { state: "completed" }
@@ -136,6 +147,9 @@ function UploadStep({ files, setFiles, back, onParse }) {
     }
 
     if (failures.length === 0) {
+      const documents = files.map(
+        file => completedDocumentsRef.current[file.name]
+      );
       onParse(documents);
     } else {
       setError(`${failures.length} 份 PDF 解析失敗；可查看各檔案狀態後重新執行。`);
