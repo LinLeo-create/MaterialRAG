@@ -1,11 +1,35 @@
 import socket
+from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from backend.launcher import find_available_port, open_browser_when_ready
+from backend.launcher import (
+    find_available_port,
+    open_browser_when_ready,
+    runtime_data_root,
+)
 
 
 class LauncherTestCase(unittest.TestCase):
+    def test_runtime_data_uses_local_app_data(self):
+        with patch.dict(
+            "os.environ",
+            {"LOCALAPPDATA": "C:/Users/test/AppData/Local"},
+            clear=True,
+        ):
+            self.assertEqual(
+                runtime_data_root(),
+                Path("C:/Users/test/AppData/Local/MaterialRAG"),
+            )
+
+    def test_runtime_data_prefers_explicit_configuration(self):
+        with patch.dict(
+            "os.environ",
+            {"MATERIALRAG_DATA_ROOT": "C:/MaterialRAGData"},
+            clear=True,
+        ):
+            self.assertEqual(runtime_data_root().name, "MaterialRAGData")
+
     def test_skips_an_occupied_port(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied:
             occupied.bind(("127.0.0.1", 0))

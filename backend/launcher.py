@@ -16,6 +16,16 @@ APP_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", APP_ROOT))
 
 
+def runtime_data_root() -> Path:
+    configured = os.getenv("MATERIALRAG_DATA_ROOT")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / "MaterialRAG"
+    return APP_ROOT / "data"
+
+
 def find_available_port(host: str, preferred_port: int, attempts: int = 20) -> int:
     if not 1 <= preferred_port <= 65535 or attempts < 1:
         raise ValueError("連接埠必須介於 1-65535，且嘗試次數至少為 1。")
@@ -71,8 +81,10 @@ def main() -> None:
         raise SystemExit("找不到正式前端，請先執行 npm run build。")
 
     if FROZEN:
+        data_root = runtime_data_root()
         os.environ.setdefault("MATERIALRAG_FRONTEND_PATH", str(frontend.parent))
-        os.environ.setdefault("MATERIALRAG_INDEX_PATH", str(APP_ROOT / "data" / "chroma"))
+        os.environ.setdefault("MATERIALRAG_INDEX_PATH", str(data_root / "data" / "chroma"))
+        os.environ.setdefault("HF_HOME", str(data_root / "models"))
 
     host = "127.0.0.1"
     port = find_available_port(host, args.port)

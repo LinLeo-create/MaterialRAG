@@ -73,6 +73,9 @@ powershell -ExecutionPolicy Bypass -File build_windows.ps1
 
 成品位於 `dist\MaterialRAG`。Embedding 模型會在第一次建立索引時下載，
 Gemini API Key 由應用程式設定並使用 Windows DPAPI 保存，不會寫入成品。
+正式成品的使用者資料預設位於 `%LOCALAPPDATA%\MaterialRAG`：索引保存於
+`data\chroma`，模型快取保存於 `models`。可使用 `MATERIALRAG_DATA_ROOT`
+指定其他資料根目錄。
 
 再開啟第二個 CMD 視窗啟動前端：
 
