@@ -1,10 +1,12 @@
 import json
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .credential_store import load_gemini_configuration, save_gemini_configuration
 from .extraction import (
@@ -225,3 +227,13 @@ async def extract_fields(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM 擷取失敗：{exc}") from exc
     return ExtractionResponse(documents=documents)
+
+
+frontend_path = Path(
+    os.getenv(
+        "MATERIALRAG_FRONTEND_PATH",
+        Path(__file__).resolve().parent.parent / "dist",
+    )
+)
+if (frontend_path / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")

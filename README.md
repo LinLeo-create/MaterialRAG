@@ -48,6 +48,10 @@ conda activate materialrag
 python -m uvicorn backend.main:app --reload --port 8000 --env-file .env.local
 ```
 
+正式建置前端後，FastAPI 會直接提供 `dist` 內容，因此只需開啟
+`http://localhost:8000`，不需要另外啟動 Vite。可使用
+`MATERIALRAG_FRONTEND_PATH` 指定其他前端成品目錄。
+
 再開啟第二個 CMD 視窗啟動前端：
 
 ```bat
