@@ -77,6 +77,14 @@ Gemini API Key 由應用程式設定並使用 Windows DPAPI 保存，不會寫�
 `data\chroma`，模型快取保存於 `models`。可使用 `MATERIALRAG_DATA_ROOT`
 指定其他資料根目錄。
 
+若要同時建立 ZIP 發行包，執行：
+
+```bat
+powershell -ExecutionPolicy Bypass -File package_windows.ps1
+```
+
+ZIP 會產生於 `release` 目錄。
+
 再開啟第二個 CMD 視窗啟動前端：
 
 ```bat
