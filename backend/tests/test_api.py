@@ -7,6 +7,7 @@ from pypdf import PdfWriter
 
 from backend.extraction import ExtractionDraft, ExtractedFieldDraft
 from backend.main import app, get_extraction_provider, get_vector_index
+import backend.main as main_module
 from backend.schemas import SearchResult
 
 
@@ -43,6 +44,29 @@ class ApiTestCase(unittest.TestCase):
             {"provider": "gemini", "model": "gemini-test", "configured": True},
         )
         self.assertNotIn("secret-value", response.text)
+
+    def test_configures_runtime_gemini_key_without_exposing_it(self):
+        try:
+            with patch("backend.main.save_gemini_configuration") as save_configuration:
+                response = self.client.post(
+                    "/api/extraction/configure-gemini",
+                    json={"api_key": "runtime-secret", "model": "models/gemini-test"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.json(),
+                {"provider": "gemini", "model": "gemini-test", "configured": True},
+            )
+            self.assertNotIn("runtime-secret", response.text)
+            save_configuration.assert_called_once_with("runtime-secret", "gemini-test")
+            self.assertEqual(
+                main_module.get_extraction_provider().api_key,
+                "runtime-secret",
+            )
+        finally:
+            main_module._runtime_extraction_provider = None
+            main_module._runtime_extraction_model = None
+            main_module.get_extraction_provider.cache_clear()
 
     def test_parses_pdf_and_preserves_page_number(self):
         response = self.client.post(

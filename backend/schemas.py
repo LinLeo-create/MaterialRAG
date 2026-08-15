@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class PageResult(BaseModel):
@@ -105,3 +105,8 @@ class ExtractionStatus(BaseModel):
     provider: str
     model: str
     configured: bool
+
+
+class GeminiConfigurationRequest(BaseModel):
+    api_key: SecretStr = Field(min_length=1, max_length=500)
+    model: str | None = Field(default=None, min_length=1, max_length=200)

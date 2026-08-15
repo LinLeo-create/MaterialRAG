@@ -1,3 +1,4 @@
+import json
 import os
 from functools import lru_cache
 
@@ -5,10 +6,12 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
+from .credential_store import load_gemini_configuration, save_gemini_configuration
 from .extraction import (
     ExtractionConfigurationError,
     ExtractionProvider,
     ExtractionService,
+    GeminiExtractionProvider,
     create_extraction_provider,
     extraction_provider_status,
 )
@@ -19,6 +22,7 @@ from .schemas import (
     ExtractionRequest,
     ExtractionResponse,
     ExtractionStatus,
+    GeminiConfigurationRequest,
     IndexResponse,
     ParseResponse,
     SearchRequest,
@@ -28,6 +32,23 @@ from .vector_index import VectorIndex, document_id_for
 
 MAX_FILE_SIZE = 20 * 1024 * 1024
 MAX_FILES = 10
+_runtime_extraction_provider: ExtractionProvider | None = None
+_runtime_extraction_model: str | None = None
+
+
+def load_saved_extraction_provider() -> None:
+    global _runtime_extraction_provider, _runtime_extraction_model
+    if _runtime_extraction_provider is not None:
+        return
+    try:
+        saved = load_gemini_configuration()
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+        return
+    if saved is None:
+        return
+    api_key, model = saved
+    _runtime_extraction_provider = GeminiExtractionProvider(api_key=api_key, model=model)
+    _runtime_extraction_model = model
 
 app = FastAPI(title="MaterialRAG API", version="0.1.0")
 app.add_middleware(
@@ -46,8 +67,37 @@ def health() -> dict[str, str]:
 
 @app.get("/api/extraction/status", response_model=ExtractionStatus)
 def extraction_status() -> ExtractionStatus:
+    load_saved_extraction_provider()
+    if _runtime_extraction_provider is not None:
+        return ExtractionStatus(
+            provider="gemini",
+            model=_runtime_extraction_model or "gemini-3.5-flash",
+            configured=True,
+        )
     provider, model, configured = extraction_provider_status()
     return ExtractionStatus(provider=provider, model=model, configured=configured)
+
+
+@app.post("/api/extraction/configure-gemini", response_model=ExtractionStatus)
+def configure_gemini(request: GeminiConfigurationRequest) -> ExtractionStatus:
+    global _runtime_extraction_provider, _runtime_extraction_model
+    model = (request.model or os.getenv("GEMINI_EXTRACTION_MODEL", "gemini-3.5-flash"))
+    model = model.strip().removeprefix("models/")
+    api_key = request.api_key.get_secret_value()
+    try:
+        save_gemini_configuration(api_key, model)
+    except (OSError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini API Key 無法儲存至 Windows 使用者設定。",
+        ) from exc
+    _runtime_extraction_provider = GeminiExtractionProvider(
+        api_key=api_key,
+        model=model,
+    )
+    _runtime_extraction_model = model
+    get_extraction_provider.cache_clear()
+    return ExtractionStatus(provider="gemini", model=model, configured=True)
 
 
 @lru_cache
@@ -57,7 +107,8 @@ def get_vector_index() -> VectorIndex:
 
 @lru_cache
 def get_extraction_provider() -> ExtractionProvider:
-    return create_extraction_provider()
+    load_saved_extraction_provider()
+    return _runtime_extraction_provider or create_extraction_provider()
 
 
 async def read_and_parse_documents(

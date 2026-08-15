@@ -66,3 +66,21 @@ export async function getExtractionStatus() {
     return null;
   }
 }
+
+export async function configureGemini(apiKey, model = null) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/extraction/configure-gemini`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey, model }),
+    });
+  } catch {
+    throw new Error("無法連線至後端，請確認服務已啟動。");
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || "Gemini API Key 設定失敗。");
+  }
+  return payload;
+}

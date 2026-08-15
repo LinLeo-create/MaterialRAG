@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { downloadCsv } from "./csv.js";
-import { extractFields, getExtractionStatus, indexDocuments, searchDocuments } from "./api.js";
+import { configureGemini, extractFields, getExtractionStatus, indexDocuments, searchDocuments } from "./api.js";
 
 const initialFields = ["材料名稱", "製程方法", "退火溫度", "能隙"];
 
@@ -225,6 +225,79 @@ function RetrievalPanel({ documents }) {
   );
 }
 
+function GeminiConfiguration() {
+  const [providerStatus, setProviderStatus] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getExtractionStatus().then(status => {
+      setProviderStatus(status);
+      setIsEditing(!status?.configured);
+    });
+  }, []);
+
+  const save = async () => {
+    const apiKey = geminiApiKey.trim();
+    if (!apiKey) return;
+    setIsSaving(true);
+    setError("");
+    try {
+      const status = await configureGemini(apiKey);
+      setProviderStatus(status);
+      setGeminiApiKey("");
+      setIsEditing(false);
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setGeminiApiKey("");
+    setError("");
+    setIsEditing(false);
+  };
+
+  const hasSavedGemini = providerStatus?.configured && providerStatus.provider === "gemini";
+
+  return (
+    <section className="gemini-configuration global-gemini-configuration">
+      <div>
+        <b>Gemini API</b>
+        <span>{hasSavedGemini
+          ? `${providerStatus.model} · 已加密記憶`
+          : "輸入 API Key 後，系統會以 Windows 帳戶加密記憶。"}</span>
+      </div>
+      {hasSavedGemini && !isEditing ? (
+        <button className="change-api-key" type="button" onClick={() => setIsEditing(true)}>
+          更改 API
+        </button>
+      ) : (
+        <form onSubmit={event => { event.preventDefault(); save(); }}>
+          <input
+            type="password"
+            autoComplete="off"
+            value={geminiApiKey}
+            onChange={event => setGeminiApiKey(event.target.value)}
+            placeholder="輸入 Gemini API Key"
+            aria-label="Gemini API Key"
+            autoFocus={Boolean(hasSavedGemini)}
+          />
+          {hasSavedGemini && <button className="cancel-api-key" type="button" onClick={cancel}>取消</button>}
+          <button type="submit" disabled={!geminiApiKey.trim() || isSaving}>
+            {isSaving ? "儲存中…" : "儲存"}
+          </button>
+        </form>
+      )}
+      {error && <p className="configuration-error" role="alert">{error}</p>}
+    </section>
+  );
+}
+
 function TableStep({ fields, documents, back }) {
   const [rows, setRows] = useState(() => {
     return documents.map(() => fields.map(() => "—"));
@@ -232,10 +305,6 @@ function TableStep({ fields, documents, back }) {
   const [extractions, setExtractions] = useState([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState("");
-  const [providerStatus, setProviderStatus] = useState(null);
-  useEffect(() => {
-    getExtractionStatus().then(setProviderStatus);
-  }, []);
   const updateCell = (ri, ci, value) => setRows(rows.map((row, r) => r === ri ? row.map((cell, c) => c === ci ? value : cell) : row));
   const addRow = () => setRows([...rows, fields.map(() => "—")]);
   const exportCsv = () => {
@@ -273,9 +342,6 @@ function TableStep({ fields, documents, back }) {
         </div>
       </div>
       {extractionError && <div className="error-message table-error" role="alert">{extractionError}</div>}
-      {providerStatus && <div className={`provider-status ${providerStatus.configured ? "provider-ready" : "provider-missing"}`}>
-        LLM：{providerStatus.provider} · {providerStatus.model} · {providerStatus.configured ? "已設定" : "缺少 API 金鑰"}
-      </div>}
       <div className="document-summary">
         {documents.map(document => (
           <div key={document.filename} className="document-summary-item">
@@ -347,6 +413,7 @@ function App() {
       <Header/>
       <main>
         <Stepper step={step}/>
+        <GeminiConfiguration/>
         {step === 1 && <FieldStep fields={fields} setFields={setFields} next={() => setStep(2)}/>}
         {step === 2 && <UploadStep files={files} setFiles={setFiles} back={() => setStep(1)} onParse={finishParsing}/>}
         {step === 3 && <TableStep fields={fields} documents={documents} back={() => setStep(2)}/>}
